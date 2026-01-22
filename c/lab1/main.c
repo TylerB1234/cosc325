@@ -11,15 +11,16 @@
 
 /* ===== Part 2 ===== */
 int sum_to(int n) {
-    // TODO: implement using a for loop and mutable local state
-    return 0;
+    int s = 0; // Local variable to hold the sum
+    for (int i = 1; i <= n; i++) {
+        s += i; // Update the sum
+    }
+    return s; // Return the computed sum
 }
 
 /* ===== Part 3 ===== */
 double avg_1_to_n(int n) {
-    // TODO: call sum_to(n)
-    // HINT: cast to double to avoid integer division
-    return 0.0;
+    return (double)sum_to(n) / n; // Avoid integer division
 }
 
 /* ===== Part 4 ===== */
@@ -28,7 +29,7 @@ void increment_bad(int x) {
 }
 
 void increment(int *x) {
-    // TODO: fix using a pointer
+    (*x)++; // Increment the value at the pointer address
 }
 
 int main() {
@@ -39,9 +40,9 @@ int main() {
     int x = 2;
     x = x + 3;
     x = x * 4;
-    printf("x=%d\n", x);
+    printf("x=%d\n", x); // Expected output: x=20
 
-    // TODO: swap the last two assignments above and re-run
+    // Reflection 1.1: The value of x changed over time, and intermediate values lived in memory.
 
 
     /* ===== Part 2 ===== */
@@ -49,10 +50,14 @@ int main() {
     printf("sum_to(5) = %d (expected 15)\n", sum_to(5));
     printf("sum_to(1) = %d (expected 1)\n", sum_to(1));
 
+    // Reflection 2.1: Control happens in the for loop, and state changes in the local variable s.
+
 
     /* ===== Part 3 ===== */
     printf("\n--- Part 3: Functions as Procedures ---\n");
     printf("avg_1_to_n(5) = %.1f (expected 3.0)\n", avg_1_to_n(5));
+
+    // Reflection 3.1: C requires explicit type conversions that Java/Python often infer automatically.
 
 
     /* ===== Part 4 ===== */
@@ -64,6 +69,9 @@ int main() {
 
     increment(&a);
     printf("after increment:     a=%d (expected 6)\n", a);
+
+    // Reflection 4.1: a didn’t change because of pass-by-value.
+    // Reflection 4.2: A pointer allows shared state between functions.
 
     return 0;
 }
