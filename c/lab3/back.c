@@ -1,589 +1,343 @@
 /* back.c - Tiny Basic Interpreter
-   Executes Tiny Basic programs from front.in file */
+   Reads and executes Tiny Basic programs from front.in */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <math.h>
 
-/* Token codes */
-#define STR_LIT 8
-#define INT_LIT 10
-#define FLOAT_LIB 9
-#define IDENT 11
-#define EQUALS_OP 20
-#define LT_OP 12
-#define GT_OP 13
-#define LE_OP 14
-#define GE_OP 15
-#define NE_OP 16
-#define ADD_OP 21
-#define SUB_OP 22
-#define MULT_OP 23
-#define DIV_OP 24
-#define LEFT_PAREN 25
-#define RIGHT_PAREN 26
-#define COMMA 27
-#define COLON 28
-#define SEMICOLON 29
-#define QMARK 52
-#define PRINT 30
-#define IF 31
-#define THEN 32
-#define INPUT 33
-#define GOTO 34
-#define LET 35
-#define GOSUB 36
-#define RETURN 37
-#define CLEAR 38
-#define LIST 39
-#define RUN 40
-#define END 41
-#define REM 42
-
-/* Symbol table for variables */
 #define MAX_VARS 100
-#define MAX_PROGRAMS 1000
-#define MAX_LINE_LENGTH 256
+#define MAX_LINES 1000
+#define MAX_LINE_LEN 256
 
 typedef struct {
-    char name[100];
+    char name[50];
     double value;
 } Variable;
 
 typedef struct {
     int lineNum;
-    int token;
-    char lexeme[256];
-} Instruction;
+    char command[50];
+    char args[200];
+} Line;
 
-/* Global data */
 Variable vars[MAX_VARS];
+Line lines[MAX_LINES];
 int varCount = 0;
-Instruction program[MAX_PROGRAMS];
-int programSize = 0;
-int currentLine = 0;
-FILE *in_fp;
-int charClass;
-char lexeme[256];
-char nextChar;
-int lexLen;
-int token;
-int nextToken;
+int lineCount = 0;
 
-/* Function declarations */
-void getChar();
-void addChar();
-void getNonBlank();
-int lex();
-void getNonBlank();
-int keywordLookup();
-int lookup(char ch);
-void executeProgram();
-void executeLine(int lineIdx);
-double evaluateExpression();
-double getTerm();
-double getFactor();
-void setVariable(char *name, double value);
-double getVariable(char *name);
-void printStatement();
-void letStatement();
-void ifStatement();
-void gotoStatement();
-void gosubStatement();
-void returnStatement();
-int findLineNumber(int lineNum);
-
-/* Get next character from file */
-void getChar()
-{
-    int c = getc(in_fp);
-    if (c == EOF)
-    {
-        charClass = EOF;
-        nextChar = 0;
-    }
-    else
-    {
-        nextChar = (char)c;
-        if (isalpha((unsigned char)nextChar))
-            charClass = 0; /* LETTER */
-        else if (isdigit((unsigned char)nextChar))
-            charClass = 1; /* DIGIT */
-        else if (nextChar == '"')
-            charClass = 2; /* QUOTE */
-        else
-            charClass = 99; /* UNKNOWN */
-    }
-}
-
-/* Add character to lexeme */
-void addChar()
-{
-    if (lexLen <= 254)
-    {
-        lexeme[lexLen++] = nextChar;
-        lexeme[lexLen] = 0;
-    }
-}
-
-/* Skip whitespace */
-void getNonBlank()
-{
-    while (isspace(nextChar))
-        getChar();
-}
-
-/* Lookup keyword */
-int keywordLookup()
-{
-    if (strcmp(lexeme, "PRINT") == 0 || strcmp(lexeme, "PR") == 0)
-        return PRINT;
-    else if (strcmp(lexeme, "IF") == 0)
-        return IF;
-    else if (strcmp(lexeme, "THEN") == 0)
-        return THEN;
-    else if (strcmp(lexeme, "INPUT") == 0)
-        return INPUT;
-    else if (strcmp(lexeme, "GOTO") == 0)
-        return GOTO;
-    else if (strcmp(lexeme, "LET") == 0)
-        return LET;
-    else if (strcmp(lexeme, "GOSUB") == 0)
-        return GOSUB;
-    else if (strcmp(lexeme, "RETURN") == 0)
-        return RETURN;
-    else if (strcmp(lexeme, "CLEAR") == 0)
-        return CLEAR;
-    else if (strcmp(lexeme, "LIST") == 0)
-        return LIST;
-    else if (strcmp(lexeme, "RUN") == 0)
-        return RUN;
-    else if (strcmp(lexeme, "END") == 0)
-        return END;
-    else if (strcmp(lexeme, "REM") == 0)
-        return REM;
-    else
-        return IDENT;
-}
-
-/* Lookup operator */
-int lookup(char ch)
-{
-    switch (ch)
-    {
-    case '=':
-        addChar();
-        return EQUALS_OP;
-    case '<':
-        addChar();
-        return LT_OP;
-    case '>':
-        addChar();
-        return GT_OP;
-    case '(':
-        addChar();
-        return LEFT_PAREN;
-    case ')':
-        addChar();
-        return RIGHT_PAREN;
-    case '+':
-        addChar();
-        return ADD_OP;
-    case '-':
-        addChar();
-        return SUB_OP;
-    case '*':
-        addChar();
-        return MULT_OP;
-    case '/':
-        addChar();
-        return DIV_OP;
-    case ',':
-        addChar();
-        return COMMA;
-    case ':':
-        addChar();
-        return COLON;
-    case ';':
-        addChar();
-        return SEMICOLON;
-    case '?':
-        addChar();
-        return QMARK;
-    default:
-        return -1;
-    }
-}
-
-/* Lexical analyzer */
-int lex()
-{
-    lexLen = 0;
-    getNonBlank();
-    
-    switch (charClass)
-    {
-    case 0: /* LETTER */
-        addChar();
-        getChar();
-        while (charClass == 0 || charClass == 1)
-        {
-            addChar();
-            getChar();
-        }
-        nextToken = keywordLookup();
-        break;
-
-    case 1: /* DIGIT */
-        addChar();
-        getChar();
-        while (charClass == 1)
-        {
-            addChar();
-            getChar();
-        }
-        if (nextChar == '.')
-        {
-            addChar();
-            getChar();
-            while (charClass == 1)
-            {
-                addChar();
-                getChar();
-            }
-            nextToken = FLOAT_LIB;
-        }
-        else
-            nextToken = INT_LIT;
-        break;
-
-    case 2: /* QUOTE */
-        addChar();
-        getChar();
-        while (charClass != 2 && charClass != EOF)
-        {
-            addChar();
-            getChar();
-        }
-        if (charClass == 2)
-        {
-            addChar();
-            getChar();
-        }
-        nextToken = STR_LIT;
-        break;
-
-    case 99: /* UNKNOWN */
-        nextToken = lookup(nextChar);
-        getChar();
-        break;
-
-    case EOF:
-        nextToken = EOF;
-        break;
-    }
-    return nextToken;
-}
-
-/* Set variable value */
-void setVariable(char *name, double value)
-{
-    for (int i = 0; i < varCount; i++)
-    {
-        if (strcmp(vars[i].name, name) == 0)
-        {
+void setVar(char *name, double value) {
+    for (int i = 0; i < varCount; i++) {
+        if (strcmp(vars[i].name, name) == 0) {
             vars[i].value = value;
             return;
         }
     }
-    if (varCount < MAX_VARS)
-    {
+    if (varCount < MAX_VARS) {
         strcpy(vars[varCount].name, name);
         vars[varCount].value = value;
         varCount++;
     }
 }
 
-/* Get variable value */
-double getVariable(char *name)
-{
-    for (int i = 0; i < varCount; i++)
-    {
+double getVar(char *name) {
+    for (int i = 0; i < varCount; i++) {
         if (strcmp(vars[i].name, name) == 0)
             return vars[i].value;
     }
     return 0;
 }
 
-/* Find line number in program */
-int findLineNumber(int lineNum)
-{
-    for (int i = 0; i < programSize; i++)
-    {
-        if (program[i].lineNum == lineNum)
+double evalExpr(char *expr) {
+    char *p = expr;
+    double result = 0;
+    int op = '+';
+    char numStr[50];
+    int j = 0;
+    
+    while (*p) {
+        if (isdigit(*p) || *p == '.') {
+            numStr[j++] = *p;
+            numStr[j] = 0;
+            p++;
+        } else if (isalpha(*p)) {
+            char varName[50];
+            int i = 0;
+            while (isalnum(*p)) {
+                varName[i++] = *p;
+                p++;
+            }
+            varName[i] = 0;
+            double val = getVar(varName);
+            
+            if (op == '+') result += val;
+            else if (op == '-') result -= val;
+            else if (op == '*') result *= val;
+            else if (op == '/') result /= val;
+            
+            j = 0;
+            numStr[0] = 0;
+        } else if (*p == '+' || *p == '-' || *p == '*' || *p == '/') {
+            if (j > 0) {
+                double val = atof(numStr);
+                if (op == '+') result += val;
+                else if (op == '-') result -= val;
+                else if (op == '*') result *= val;
+                else if (op == '/') result /= val;
+                j = 0;
+                numStr[0] = 0;
+            }
+            op = *p;
+            p++;
+        } else if (*p == '(') {
+            p++;
+            char subExpr[100];
+            int i = 0, depth = 1;
+            while (depth > 0) {
+                if (*p == '(') depth++;
+                else if (*p == ')') depth--;
+                if (depth > 0) subExpr[i++] = *p;
+                p++;
+            }
+            subExpr[i] = 0;
+            double val = evalExpr(subExpr);
+            
+            if (op == '+') result += val;
+            else if (op == '-') result -= val;
+            else if (op == '*') result *= val;
+            else if (op == '/') result /= val;
+        } else {
+            p++;
+        }
+    }
+    
+    if (j > 0) {
+        double val = atof(numStr);
+        if (op == '+') result += val;
+        else if (op == '-') result -= val;
+        else if (op == '*') result *= val;
+        else if (op == '/') result /= val;
+    }
+    
+    return result;
+}
+
+int compareExpr(char *left, char *op, char *right) {
+    double lval = evalExpr(left);
+    double rval = evalExpr(right);
+    
+    if (strcmp(op, "<") == 0) return lval < rval;
+    if (strcmp(op, ">") == 0) return lval > rval;
+    if (strcmp(op, "=") == 0) return lval == rval;
+    if (strcmp(op, "<=") == 0) return lval <= rval;
+    if (strcmp(op, ">=") == 0) return lval >= rval;
+    if (strcmp(op, "<>") == 0) return lval != rval;
+    
+    return 0;
+}
+
+int findLine(int lineNum) {
+    for (int i = 0; i < lineCount; i++) {
+        if (lines[i].lineNum == lineNum)
             return i;
     }
     return -1;
 }
 
-/* Evaluate factor (number, variable, or parenthesized expression) */
-double getFactor()
-{
-    if (nextToken == INT_LIT)
-    {
-        double val = atof(lexeme);
-        lex();
-        return val;
-    }
-    else if (nextToken == FLOAT_LIB)
-    {
-        double val = atof(lexeme);
-        lex();
-        return val;
-    }
-    else if (nextToken == IDENT)
-    {
-        char varName[100];
-        strcpy(varName, lexeme);
-        lex();
-        return getVariable(varName);
-    }
-    else if (nextToken == LEFT_PAREN)
-    {
-        lex();
-        double val = evaluateExpression();
-        lex(); /* skip RIGHT_PAREN */
-        return val;
-    }
-    else if (nextToken == SUB_OP)
-    {
-        lex();
-        return -getFactor();
-    }
-    return 0;
-}
-
-/* Evaluate term (handles * and /) */
-double getTerm()
-{
-    double result = getFactor();
+void executePrint(char *args) {
+    char *p = args;
+    char part[200];
+    int i = 0;
     
-    while (nextToken == MULT_OP || nextToken == DIV_OP)
-    {
-        int op = nextToken;
-        lex();
-        double right = getFactor();
-        if (op == MULT_OP)
-            result *= right;
-        else if (op == DIV_OP && right != 0)
-            result /= right;
-    }
-    return result;
-}
-
-/* Evaluate expression (handles + and -) */
-double evaluateExpression()
-{
-    double result = getTerm();
-    
-    while (nextToken == ADD_OP || nextToken == SUB_OP)
-    {
-        int op = nextToken;
-        lex();
-        double right = getTerm();
-        if (op == ADD_OP)
-            result += right;
-        else
-            result -= right;
-    }
-    return result;
-}
-
-/* Execute PRINT statement */
-void printStatement()
-{
-    lex(); /* skip PRINT token */
-    
-    while (nextToken != EOF && nextToken != COLON)
-    {
-        if (nextToken == STR_LIT)
-        {
-            /* Print string, removing quotes */
-            for (int i = 1; i < strlen(lexeme) - 1; i++)
-                printf("%c", lexeme[i]);
-            lex();
-        }
-        else if (nextToken == COMMA)
-        {
+    while (*p) {
+        if (*p == ',') {
+            part[i] = 0;
+            i = 0;
+            
+            char *start = part;
+            while (*start && isspace(*start)) start++;
+            char *end = start + strlen(start) - 1;
+            while (end > start && isspace(*end)) end--;
+            end[1] = 0;
+            
+            if (*start == '"') {
+                for (int j = 1; j < strlen(start) - 1; j++)
+                    printf("%c", start[j]);
+            } else {
+                printf("%g", evalExpr(start));
+            }
             printf("\t");
-            lex();
+            p++;
+        } else {
+            part[i++] = *p;
+            p++;
         }
-        else
-        {
-            /* Print expression result */
-            double val = evaluateExpression();
-            if (val == (int)val)
-                printf("%d", (int)val);
-            else
-                printf("%g", val);
-        }
+    }
+    
+    if (i > 0) {
+        part[i] = 0;
+        char *start = part;
+        while (*start && isspace(*start)) start++;
+        char *end = start + strlen(start) - 1;
+        while (end > start && isspace(*end)) end--;
+        end[1] = 0;
         
-        if (nextToken == COMMA)
-            printf("\t");
+        if (*start == '"') {
+            for (int j = 1; j < strlen(start) - 1; j++)
+                printf("%c", start[j]);
+        } else {
+            printf("%g", evalExpr(start));
+        }
     }
     printf("\n");
 }
 
-/* Execute LET statement */
-void letStatement()
-{
-    lex(); /* skip LET */
-    char varName[100];
-    strcpy(varName, lexeme);
-    lex(); /* skip variable name */
-    lex(); /* skip = */
-    double val = evaluateExpression();
-    setVariable(varName, val);
+void executeLet(char *args) {
+    char *eq = strchr(args, '=');
+    if (!eq) return;
+    
+    char varName[50];
+    strncpy(varName, args, eq - args);
+    varName[eq - args] = 0;
+    
+    char *start = varName;
+    while (*start && isspace(*start)) start++;
+    char *end = start + strlen(start) - 1;
+    while (end > start && isspace(*end)) end--;
+    end[1] = 0;
+    strcpy(varName, start);
+    
+    double val = evalExpr(eq + 1);
+    setVar(varName, val);
 }
 
-/* Execute IF statement */
-void ifStatement()
-{
-    lex(); /* skip IF */
-    double left = evaluateExpression();
-    int op = nextToken;
-    lex();
-    double right = evaluateExpression();
+int executeIf(char *args, int *nextLine) {
+    char argsCopy[200];
+    strcpy(argsCopy, args);
+    char *then = strstr(argsCopy, "THEN");
+    if (!then) return 1;
     
-    int condition = 0;
-    if (op == LT_OP && left < right) condition = 1;
-    else if (op == GT_OP && left > right) condition = 1;
-    else if (op == LE_OP && left <= right) condition = 1;
-    else if (op == GE_OP && left >= right) condition = 1;
-    else if (op == EQUALS_OP && left == right) condition = 1;
-    else if (op == NE_OP && left != right) condition = 1;
+    *then = 0;
     
-    lex(); /* skip THEN */
+    char left[100], op[10], right[100];
+    char *p = argsCopy;
+    int i = 0;
     
-    if (condition)
-    {
-        if (nextToken == GOTO)
-        {
-            lex();
-            int lineNum = atoi(lexeme);
-            int idx = findLineNumber(lineNum);
-            if (idx >= 0)
-                currentLine = idx;
-            lex();
+    while (p < then && *p && *p != '<' && *p != '>' && *p != '=') {
+        if (!isspace(*p)) left[i++] = *p;
+        p++;
+    }
+    left[i] = 0;
+    
+    i = 0;
+    if (*p == '<' || *p == '>' || *p == '=') {
+        if (p[1] == '>' || p[1] == '=') {
+            op[i++] = *p;
+            op[i++] = p[1];
+            p += 2;
+        } else {
+            op[i++] = *p;
+            p++;
         }
-        else if (nextToken == LET)
-        {
-            letStatement();
+    }
+    op[i] = 0;
+    
+    i = 0;
+    while (p < then && *p) {
+        if (!isspace(*p)) right[i++] = *p;
+        p++;
+    }
+    right[i] = 0;
+    
+    if (compareExpr(left, op, right)) {
+        then += 4;
+        while (*then && isspace(*then)) then++;
+        
+        if (strncmp(then, "GOTO", 4) == 0) {
+            int lineNum = atoi(then + 4);
+            *nextLine = findLine(lineNum);
+            return 0;
+        } else if (strncmp(then, "LET", 3) == 0) {
+            executeLet(then + 3);
         }
+    }
+    
+    return 1;
+}
+
+void loadProgram(const char *filename) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        printf("ERROR: Cannot open %s\n", filename);
+        exit(1);
+    }
+    
+    char line[MAX_LINE_LEN];
+    while (fgets(line, sizeof(line), fp)) {
+        if (strlen(line) < 2) continue;
+        if (strncmp(line, "REM", 3) == 0) continue;
+        
+        int lineNum = atoi(line);
+        if (lineNum == 0) continue;
+        
+        char *cmd = line;
+        while (*cmd && isdigit(*cmd)) cmd++;
+        while (*cmd && isspace(*cmd)) cmd++;
+        
+        char command[50];
+        int i = 0;
+        while (*cmd && !isspace(*cmd) && i < 49) {
+            command[i++] = *cmd;
+            cmd++;
+        }
+        command[i] = 0;
+        
+        while (*cmd && isspace(*cmd)) cmd++;
+        
+        lines[lineCount].lineNum = lineNum;
+        strcpy(lines[lineCount].command, command);
+        strcpy(lines[lineCount].args, cmd);
+        
+        char *nl = strchr(lines[lineCount].args, '\n');
+        if (nl) *nl = 0;
+        
+        lineCount++;
+    }
+    fclose(fp);
+}
+
+void run() {
+    int pc = 0;
+    
+    while (pc < lineCount) {
+        char *cmd = lines[pc].command;
+        char *args = lines[pc].args;
+        
+        if (strcmp(cmd, "PRINT") == 0 || strcmp(cmd, "PR") == 0) {
+            executePrint(args);
+        } else if (strcmp(cmd, "LET") == 0) {
+            executeLet(args);
+        } else if (strcmp(cmd, "IF") == 0) {
+            int nextLine = pc + 1;
+            if (!executeIf(args, &nextLine)) {
+                pc = nextLine;
+                continue;
+            }
+        } else if (strcmp(cmd, "GOTO") == 0) {
+            int lineNum = atoi(args);
+            pc = findLine(lineNum);
+            if (pc < 0) break;
+            continue;
+        } else if (strcmp(cmd, "END") == 0) {
+            break;
+        }
+        
+        pc++;
     }
 }
 
-/* Execute GOTO statement */
-void gotoStatement()
-{
-    lex(); /* skip GOTO */
-    int lineNum = atoi(lexeme);
-    int idx = findLineNumber(lineNum);
-    if (idx >= 0)
-        currentLine = idx;
-    lex();
-}
-
-/* Main program execution */
-void executeProgram()
-{
-    currentLine = 0;
-    
-    while (currentLine < programSize && program[currentLine].token != END)
-    {
-        nextToken = program[currentLine].token;
-        strcpy(lexeme, program[currentLine].lexeme);
-        
-        switch (nextToken)
-        {
-        case PRINT:
-            printStatement();
-            break;
-        case LET:
-            letStatement();
-            break;
-        case IF:
-            ifStatement();
-            break;
-        case GOTO:
-            gotoStatement();
-            currentLine--;
-            break;
-        case REM:
-            break;
-        case END:
-            return;
-        }
-        currentLine++;
-    }
-}
-
-/* Parse entire program file */
-void parseProgram()
-{
-    in_fp = fopen("front.in", "r");
-    if (!in_fp)
-    {
-        printf("ERROR - cannot open front.in\n");
-        return;
-    }
-    
-    getChar();
-    int lineNum = 0;
-    
-    while (charClass != EOF && programSize < MAX_PROGRAMS)
-    {
-        lexLen = 0;
-        
-        /* Get line number */
-        while (charClass != EOF && !isdigit(nextChar))
-            getChar();
-        
-        if (charClass == EOF)
-            break;
-        
-        lineNum = 0;
-        while (isdigit(nextChar))
-        {
-            lineNum = lineNum * 10 + (nextChar - '0');
-            getChar();
-        }
-        
-        program[programSize].lineNum = lineNum;
-        
-        /* Get first token of line */
-        lex();
-        program[programSize].token = nextToken;
-        strcpy(program[programSize].lexeme, lexeme);
-        
-        programSize++;
-        
-        /* Skip to end of line */
-        while (charClass != EOF && nextChar != '\n')
-            getChar();
-        if (nextChar == '\n')
-            getChar();
-    }
-    
-    fclose(in_fp);
-}
-
-/* Main */
-int main()
-{
-    parseProgram();
-    executeProgram();
+int main() {
+    loadProgram("front.in");
+    run();
     return 0;
 }
