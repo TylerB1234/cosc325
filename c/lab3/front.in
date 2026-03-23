@@ -1,0 +1,22 @@
+REM Tiny Basic Interpreter Test - Input values: A:10,B:3 will test all paths (addition, subtraction, multiplication, division, comparisons)
+10 LET X = 5
+20 LET Y = 2
+30 LET Z = X + Y
+40 PRINT "Sum: ", Z
+50 LET Z = X - Y
+60 PRINT "Difference: ", Z
+70 LET Z = X * Y
+80 PRINT "Product: ", Z
+90 LET Z = X / Y
+100 PRINT "Quotient: ", Z
+110 LET A = 10
+120 LET B = 3
+130 IF A > B THEN PRINT "A is greater than B"
+140 IF A < B THEN PRINT "A is less than B"
+150 IF A = B THEN PRINT "A equals B"
+160 IF A >= B THEN PRINT "A is >= B"
+170 IF A <= B THEN PRINT "A is <= B"
+180 LET C = (X + Y) * 2
+190 PRINT "Complex expression: ", C
+200 PRINT "Final values - X: ", X, "Y: ", Y, "A: ", A
+210 END
